@@ -5,8 +5,8 @@ sys.path.append("../")
 sys.path.append("../../")
 
 import unittest2
-from pynexrad.classifier import L2NeuralNet
-from pynexrad.classifier import NNClassifierBuilder
+from pynexradml.classifier import L2NeuralNet
+from pynexradml.classifier import NNClassifierBuilder
 
 class TestClassifier(unittest2.TestCase):
     def setUp(self):
