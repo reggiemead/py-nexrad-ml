@@ -1,0 +1,32 @@
+#xml parsing
+
+import libxml2
+
+def importData(datastore, path):
+    ds = tables.openFile(datastore, "a")
+
+    if not 'bio' in ds.root:
+        ds.createGroup("/", "bio", "Biological Data")
+    if not 'nonbio' in ds.root:
+        ds.createGroup("/", "nonbio", "Nonbiological Data")
+
+    doc = libxml2.parseFile(path + "/classes.xml")
+    ctxt = doc.xpathNewContext()
+    biofiles = [(x.getContent()) for x in ctxt.xpathEval("/training_sweeps/sweep[@class=1]/@id")]
+    nonbiofiles = [(x.getContent()) for x in ctxt.xpathEval("/training_sweeps/sweep[@class=0]/@id")]
+
+    for bfile in biofiles:
+        print("Checking %s" % (bfile))
+        (fname, fext) = os.path.splitext(bfile)
+        if fname.startswith("6500"):
+            fname = fname[4:]
+        if not "/bio/" + fname in ds:
+            loadScanIntoDataset(ds, "/bio", path + "//" + bfile, fname)
+    for nfile in nonbiofiles:
+        print("Checking %s" % (nfile))
+        (fname, fext) = os.path.splitext(nfile)
+        if fname.startswith("6500"):
+            fname = fname[4:]
+        if not "/nonbio/" + fname in ds:
+            loadScanIntoDataset(ds, "/nonbio", path + "//" + nfile, fname)
+    ds.close()
