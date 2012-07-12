@@ -116,7 +116,7 @@ class FeedForwardNeuralNet(object):
             self.accum_mse.append(mse)
             print "MSE for epoch %d : %f" % (i, mse)
 
-    def printStats(self, tp, tn, fp, fn):
+    def printStats(self, tp, tn, fp, fn, mse):
         accuracy = (tp + tn) / (tp + tn + fp + fn)
         precision = 0.0 if (tp + fp) == 0 else tp / (tp + fp)
         recall = 0.0 if (tp + fn) == 0 else tp / (tp + fn)
@@ -126,16 +126,18 @@ class FeedForwardNeuralNet(object):
         print "Classifier Performance:"
         print ""
         print "  Confusion Matrix"
+        print "       TP    |    FP     " 
         print "  +---------------------+"
         print "  |%10d|%10d|" % (tp, fp)
         print "  |%10d|%10d|" % (fn, tn)
         print "  +---------------------+"
+        print "       FN    |    TN     " 
         print ""
         print "  - Accuracy = %.3f" % accuracy
         print "  - Precision = %.3f" % precision
         print "  - Recall = %.3f" % recall
         print "  - F1 = %.3f" % f1
-        print "  - MSE = %.3f" % self.mse
+        print "  - MSE = %.3f" % mse
         print "---------------------------------"
     
     def validate(self):
@@ -157,9 +159,9 @@ class FeedForwardNeuralNet(object):
             count += 1
         self.mse = mse / count
         
-        self.printStats(tp, tp, fp, fn)
+        self.printStats(tp, tp, fp, fn, self.mse)
 
-        return self.mse
+        return (self.mse, tp, tn, fp, fn)
 
     def get_learning_data(self):
         for i in xrange(len(self.learning_data)):

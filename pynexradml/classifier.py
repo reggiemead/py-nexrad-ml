@@ -20,6 +20,7 @@ class L2NeuralNet(FeedForwardNeuralNet):
         self.filterFeatures = {}
         self.memcache = {}
         self.sweepThreshold = None
+        self.randomize_presentation = True
 
     def serialize(self):
         properties = super(L2NeuralNet, self).serialize()
@@ -85,6 +86,7 @@ class L2NeuralNet(FeedForwardNeuralNet):
             data = self.transformData(self.datastore.getData(dataset, name))
             self.datacache.setData(data, name, features, filters)
             self.memcache[name] = data
+        np.random.shuffle(data)
         return data
 
     def get_data(self, sweeps):
@@ -98,6 +100,7 @@ class L2NeuralNet(FeedForwardNeuralNet):
 
     def get_learning_data(self):
         print "Begin Learning"
+        random.shuffle(self.training_sweeps)
         for inputs, target in self.get_data(self.training_sweeps):
             yield (inputs, target)
 
@@ -139,8 +142,8 @@ class L2NeuralNet(FeedForwardNeuralNet):
                 elif not exceedsThreshold and target == 1.0:
                     fn += 1
             self.mse = mse / count
-            self.printStats(tp, tp, fp, fn)
-        return self.mse
+            self.printStats(tp, tn, fp, fn, self.mse)
+        return (self.mse, tp, tn, fp, fn)
 
 class NNClassifierBuilder(object):
     def __init__(self, datastore, datacache):
@@ -153,6 +156,7 @@ class NNClassifierBuilder(object):
         self.epochs = 10
         self.learning = 0.1
         self.sweepThreshold = None
+        self.hidden_nodes = 3
 
     def kFoldCrossValidation(self, k_folds, inputs):
         k_length = len(inputs) // k_folds
@@ -168,11 +172,11 @@ class NNClassifierBuilder(object):
         random.shuffle(sweeps) 
         fold_size = len(sweeps) // folds
         sweeps = sweeps[0:fold_size*folds]
-        fold = 0
+        (fold, cv_mse, cv_tp, cv_tn, cv_fp, cv_fn) = 0, 0, 0, 0, 0, 0
         for training, validation in self.kFoldCrossValidation(folds, sweeps):
             fold += 1
             print "Fold %d" % fold
-            network = L2NeuralNet(len(self.features), len(self.features)*2)
+            network = L2NeuralNet(len(self.features), self.hidden_nodes)
             network.datastore = self.ds
             network.datacache = self.dc
             network.loadFeatures(self.features)
@@ -183,21 +187,29 @@ class NNClassifierBuilder(object):
 
             print "Learning Network Parameters"
             network.learn(learning=self.learning, epochs=self.epochs)
-            mse = network.validate()
+            (mse, tp, tn, fp, fn) = network.validate()
+            cv_mse += mse
+            cv_tp += tp
+            cv_tn += tn
+            cv_fp += fp
+            cv_fn += fn
             if self.net == None or mse < self.bestmse:
                 self.net = network
                 self.bestmse = mse
 
             print "MSE = %s" % mse
+        
+        print "\n\nCROSS VALIDATION RESULTS:"
+        self.net.printStats(cv_tp, cv_tn, cv_fp, cv_fn, (cv_mse / folds))
 
-            """
-            plt.plot(range(1, len(network.accum_mse) + 1, 1), network.accum_mse)
-            plt.xlabel('epochs')
-            plt.ylabel('mean squared error')
-            plt.grid(True)
-            plt.title("Mean Squared Error by Epoch")
-            plt.show()
-            """
+        """
+        plt.plot(range(1, len(network.accum_mse) + 1, 1), network.accum_mse)
+        plt.xlabel('epochs')
+        plt.ylabel('mean squared error')
+        plt.grid(True)
+        plt.title("Mean Squared Error by Epoch")
+        plt.show()
+        """
 
     def save(self, output_file):
         self.net.save(output_file)
@@ -210,17 +222,18 @@ if __name__ == "__main__":
 
 
     parser = argparse.ArgumentParser(description='Build and validate classifiers')
-    parser.add_argument('-b', '--build')
+    parser.add_argument('-b', '--build', help='Build the specified classifier type (neural_net)')
     parser.add_argument('-d', '--data_dir')
+    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--features', nargs='*')
     parser.add_argument('--filters', nargs='*')
     parser.add_argument('--folds', type=int, default=10)
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--hidden_nodes', type=int, default=5)
     parser.add_argument('--learning', type=float, default=0.1)
+    parser.add_argument('-o', '--output')
     parser.add_argument('--sweep_threshold', type=float)
     parser.add_argument('-t', '--training_data', nargs='*')
-    parser.add_argument('-o', '--output')
-    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
     util.debug = args.debug
@@ -233,9 +246,11 @@ if __name__ == "__main__":
         builder.filters = args.filters
         builder.learning = args.learning
         builder.epochs = args.epochs
+        builder.hidden_nodes = args.hidden_nodes
         if args.sweep_threshold != None:
             builder.sweepThreshold = args.sweep_threshold
         builder.build(args.training_data, args.folds)
-        builder.save(args.output)
-     else:
-         parser.print_help()
+        if args.output != None:
+            builder.save(args.output)
+    else:
+        parser.print_help()
