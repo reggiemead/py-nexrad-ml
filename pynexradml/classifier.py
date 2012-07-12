@@ -19,6 +19,7 @@ class L2NeuralNet(FeedForwardNeuralNet):
         self.filters = {}
         self.filterFeatures = {}
         self.memcache = {}
+        self.sweepThreshold = None
 
     def serialize(self):
         properties = super(L2NeuralNet, self).serialize()
@@ -69,27 +70,29 @@ class L2NeuralNet(FeedForwardNeuralNet):
         layers = self.buildFeatures(data)
         return self.filterData(layers)
 
+    def getCachedData(self, name, dataset, target):
+        features = self.features.keys()
+        filters = self.filters.keys()
+        if name in self.memcache:
+            util.LOG("Retrieving %s from memcache, target = %.1f" % (name, target))
+            data = self.memcache[name]
+        elif self.datacache.hasData(name, features, filters):
+            util.LOG("Retrieving %s from diskcache, target = %.1f" % (name, target))
+            data = self.datacache.getData(name, features, filters)
+            self.memcache[name] = data
+        else:
+            util.LOG("Caching %s, target = %.1f" % (name, target))
+            data = self.transformData(self.datastore.getData(dataset, name))
+            self.datacache.setData(data, name, features, filters)
+            self.memcache[name] = data
+        return data
+
     def get_data(self, sweeps):
         for sweep in sweeps:
             name = sweep[1]
-            features = self.features.keys()
-            filters = self.filters.keys()
             print "%s" % name
-            if name in self.memcache:
-                util.LOG("Retrieving %s from memcache, target = %.1f" % (name, float(sweep[2])))
-                data = self.memcache[name]
-            elif self.datacache.hasData(name, features, filters):
-                util.LOG("Retrieving %s from diskcache, target = %.1f" % (name, float(sweep[2])))
-                data = self.datacache.getData(name, features, filters)
-                self.memcache[name] = data
-            else:
-                util.LOG("Caching %s, target = %.1f" % (name, float(sweep[2])))
-                data = self.transformData(self.datastore.getData(sweep[0], name))
-                self.datacache.setData(data, name, features, filters)
-                self.memcache[name] = data
-
             target = float(sweep[2])
-            for x in data:
+            for x in self.getCachedData(name, sweep[0], target):
                 if x[0] != 0.0:
                     yield (x, target)
 
@@ -103,6 +106,42 @@ class L2NeuralNet(FeedForwardNeuralNet):
         for inputs, target in self.get_data(self.validation_sweeps):
             yield (inputs, target)
 
+    def validate(self):
+        if self.sweepThreshold == None:
+            super(L2NeuralNet, self).validate()
+        else:
+            print "Begin Validation"
+            (mse, count, tp, tn, fp, fn) = 0, 0, 0, 0, 0, 0 
+            self.activations = []
+            for sweep in self.validation_sweeps:
+                name = sweep[1]
+                print "%s" % name
+                target = float(sweep[2])
+                hits = 0
+                scount = 0
+                for x in self.getCachedData(name, sweep[0], target):
+                    output = self.activate(x)
+                    self.activations.append(output)
+                    mse += ((target - output)**2)
+                    output = 1.0 if output > 0.5 else 0.0
+                    if output == 1.0:
+                        hits += 1
+                    scount += 1
+
+                count += scount
+                exceedsThreshold = (hits / scount) > self.sweepThreshold
+                if exceedsThreshold and target == 1.0:
+                    tp += 1
+                elif exceedsThreshold and target == 0.0:
+                    fp += 1
+                elif not exceedsThreshold and target == 0.0:
+                    tn += 1
+                elif not exceedsThreshold and target == 1.0:
+                    fn += 1
+            self.mse = mse / count
+            self.printStats(tp, tp, fp, fn)
+        return self.mse
+
 class NNClassifierBuilder(object):
     def __init__(self, datastore, datacache):
         self.ds = datastore
@@ -113,6 +152,7 @@ class NNClassifierBuilder(object):
         self.filters = []
         self.epochs = 10
         self.learning = 0.1
+        self.sweepThreshold = None
 
     def kFoldCrossValidation(self, k_folds, inputs):
         k_length = len(inputs) // k_folds
@@ -139,6 +179,7 @@ class NNClassifierBuilder(object):
             network.loadFilters(self.filters)
             network.training_sweeps = training
             network.validation_sweeps = validation
+            network.sweepThreshold = self.sweepThreshold
 
             print "Learning Network Parameters"
             network.learn(learning=self.learning, epochs=self.epochs)
@@ -176,6 +217,7 @@ if __name__ == "__main__":
     parser.add_argument('--folds', type=int, default=10)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--learning', type=float, default=0.1)
+    parser.add_argument('--sweep_threshold', type=float)
     parser.add_argument('-t', '--training_data', nargs='*')
     parser.add_argument('-o', '--output')
     parser.add_argument('--debug', action='store_true')
@@ -191,5 +233,9 @@ if __name__ == "__main__":
         builder.filters = args.filters
         builder.learning = args.learning
         builder.epochs = args.epochs
+        if args.sweep_threshold != None:
+            builder.sweepThreshold = args.sweep_threshold
         builder.build(args.training_data, args.folds)
         builder.save(args.output)
+     else:
+         parser.print_help()
