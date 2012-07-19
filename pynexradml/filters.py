@@ -24,7 +24,7 @@ def noBadRef(dataLayers):
 def noBadVel(dataLayers):
     data = dataLayers['vel']
     for i in xrange(len(data)):
-        if data[i] == BADVAL:
+        if data[i] == BADVAL or data[i] == RFVAL:
             dataLayers['_filter_'][i] = 1
 
 def subSample(dataLayers):

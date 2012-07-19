@@ -36,7 +36,7 @@ def calcRange(data):
             result[az, r] = r * 250
     return result
 
-def calcSkew(data, window = 3):
+def calcSkew(data, window = 11):
     border = window // 2
     dim = data.shape
 
@@ -45,7 +45,10 @@ def calcSkew(data, window = 3):
     result = np.array(np.zeros(dim))
     for row in xrange(border, border + dim[0]):
         for col in xrange(border, border + dim[1]):
-            result[row - border, col - border] = stats.skew(ref[row - border : row + border + 1, col - border : col + border + 1], axis=None)
+            tmp = ref[row - border : row + border + 1, col - border : col + border + 1]
+            tmp = tmp - ((tmp == BADVAL) * BADVAL) #Set any badval in temporary matrix to zero
+            tmp = tmp - ((tmp == RFVAL) * RFVAL) #Set any rfval in temporary matrix to zero
+            result[row - border, col - border] = stats.skew(tmp, axis=None)
     return result
 
 def calcKurtosis(data, window = 3):
@@ -57,7 +60,10 @@ def calcKurtosis(data, window = 3):
     result = np.array(np.zeros(dim))
     for row in xrange(border, border + dim[0]):
         for col in xrange(border, border + dim[1]):
-            result[row - border, col - border] = stats.kurtosis(ref[row - border : row + border + 1, col - border : col + border + 1], axis=None)
+            tmp = ref[row - border : row + border + 1, col - border : col + border + 1]
+            tmp = tmp - ((tmp == BADVAL) * BADVAL) #Set any badval in temporary matrix to zero
+            tmp = tmp - ((tmp == RFVAL) * RFVAL) #Set any rfval in temporary matrix to zero
+            result[row - border, col - border] = stats.kurtosis(tmp, axis=None)
     return result
 
 def calcVariance(data, window = 3):
@@ -69,7 +75,10 @@ def calcVariance(data, window = 3):
     result = np.array(np.zeros(dim))
     for row in xrange(border, border + dim[0]):
         for col in xrange(border, border + dim[1]):
-            result[row - border, col - border] = np.var(ref[row - border : row + border + 1, col - border : col + border + 1])
+            tmp = ref[row - border : row + border + 1, col - border : col + border + 1]
+            tmp = tmp - ((tmp == BADVAL) * BADVAL) #Set any badval in temporary matrix to zero
+            tmp = tmp - ((tmp == RFVAL) * RFVAL) #Set any rfval in temporary matrix to zero
+            result[row - border, col - border] = np.var(tmp)
     return result
 
 def calcRefVariance(data):
