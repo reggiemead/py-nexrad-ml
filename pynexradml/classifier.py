@@ -1,4 +1,4 @@
-import datastore, datacache, util
+import datastore, datacache, util, ConfigParser
 import numpy as np
 import random
 import matplotlib
@@ -224,6 +224,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Build and validate classifiers')
     parser.add_argument('-b', '--build', help='Build the specified classifier type (neural_net)')
     parser.add_argument('-d', '--data_dir')
+    parser.add_argument('-f', '--config')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--features', nargs='*')
@@ -234,11 +235,39 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output')
     parser.add_argument('--sweep_threshold', type=float)
     parser.add_argument('-t', '--training_data', nargs='*')
+    parser.add_argument('--threads', type=int)
     args = parser.parse_args()
 
     util.debug = args.debug
 
-    if args.build == 'neural_net':
+    build = None
+    data_dir = None
+    debug = None
+
+    if args.config != None:
+        config = ConfigParser.ConfigParser()
+        config.read(args.config)
+
+        if 'common' in config.sections():
+            common_items = dict(config.items('common'))
+            if 'build' in common_items:
+                build = common_items['build']
+            if 'debug' in common_items:
+                debug = common_items['debug']
+
+        if 'data' in config.sections():
+            data_items = dict(config.items('data'))
+            if 'data_dir' in data_items:
+                data_dir = data_items['data_dir']
+
+        if 'validation' in config.sections():
+            """
+            data_items = dict(config.items('data'))
+            if 'data_dir' in data_items:
+                data_dir = data_items['data_dir']
+            """
+    
+    else if args.build == 'neural_net':
         ds = datastore.Datastore(args.data_dir)
         dc = datacache.Datacache(os.path.join(args.data_dir, 'cache.h5'))
         builder = NNClassifierBuilder(ds, dc)
