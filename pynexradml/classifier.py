@@ -217,32 +217,35 @@ class NNClassifierBuilder(object):
     def load(self, input_file):
         self.net.load(input_file)
 
+def load_parameter(name, parameter, configs, default=None):
+    if parameter != None:
+        return parameter
+    elif name in configs:
+        return configs[name]
+    else:
+        return default
+
 if __name__ == "__main__":
     import argparse, os
 
-
     parser = argparse.ArgumentParser(description='Build and validate classifiers')
-    parser.add_argument('-b', '--build', help='Build the specified classifier type (neural_net)')
+    parser.add_argument('-b', '--build', action='store_true', help='Build a neural net classifier')
     parser.add_argument('-d', '--data_dir')
     parser.add_argument('-f', '--config')
     parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--epochs', type=int)
     parser.add_argument('--features', nargs='*')
     parser.add_argument('--filters', nargs='*')
-    parser.add_argument('--folds', type=int, default=10)
-    parser.add_argument('--hidden_nodes', type=int, default=5)
-    parser.add_argument('--learning', type=float, default=0.1)
+    parser.add_argument('--folds', type=int)
+    parser.add_argument('--hidden_nodes', type=int)
+    parser.add_argument('--learning', type=float)
     parser.add_argument('-o', '--output')
     parser.add_argument('--sweep_threshold', type=float)
     parser.add_argument('-t', '--training_data', nargs='*')
     parser.add_argument('--threads', type=int)
     args = parser.parse_args()
 
-    util.debug = args.debug
-
-    build = None
-    data_dir = None
-    debug = None
+    config_values = {}
 
     if args.config != None:
         config = ConfigParser.ConfigParser()
@@ -250,36 +253,57 @@ if __name__ == "__main__":
 
         if 'common' in config.sections():
             common_items = dict(config.items('common'))
-            if 'build' in common_items:
-                build = common_items['build']
             if 'debug' in common_items:
-                debug = common_items['debug']
+                config_values['debug'] = bool(common_items['debug'])
+            if 'output' in common_items:
+                config_values['output'] = common_items['output']
+            if 'threads' in common_items:
+                config_values['threads'] = int(common_items['threads'])
 
         if 'data' in config.sections():
             data_items = dict(config.items('data'))
             if 'data_dir' in data_items:
-                data_dir = data_items['data_dir']
+                config_values['data_dir'] = data_items['data_dir']
+            if 'filters' in data_items:
+                config_values['filters'] = data_items['filters'].split()
+            if 'features' in data_items:
+                config_values['features'] = data_items['features'].split()
 
         if 'validation' in config.sections():
-            """
-            data_items = dict(config.items('data'))
-            if 'data_dir' in data_items:
-                data_dir = data_items['data_dir']
-            """
+            validation_items = dict(config.items('validation'))
+            if 'folds' in validation_items:
+                config_values['folds'] = int(validation_items['folds'])
+            if 'sweep_threshold' in validation_items:
+                config_values['sweep_threshold'] = float(validation_items['sweep_threshold'])
+            if 'training_data' in validation_items:
+                config_values['training_data'] = validation_items['training_data'].split()
+
+        if 'classifier' in config.sections():
+            classifier_items = dict(config.items('classifier'))
+            if 'epochs' in classifier_items:
+                config_values['epochs'] = int(classifier_items['epochs'])
+            if 'hidden_nodes' in classifier_items:
+                config_values['hidden_nodes'] = int(classifier_items['hidden_nodes'])
+            if 'learning' in classifier_items:
+                config_values['learning'] = float(classifier_items['learning'])
+
+    util.debug = load_parameter('debug', args.debug, config_values, default=False)
     
-    else if args.build == 'neural_net':
-        ds = datastore.Datastore(args.data_dir)
-        dc = datacache.Datacache(os.path.join(args.data_dir, 'cache.h5'))
+    if args.build:
+        data_dir = load_parameter('data_dir', args.data_dir, config_values)
+        ds = datastore.Datastore(data_dir)
+        dc = datacache.Datacache(os.path.join(data_dir, 'cache.h5'))
         builder = NNClassifierBuilder(ds, dc)
-        builder.features = args.features
-        builder.filters = args.filters
-        builder.learning = args.learning
-        builder.epochs = args.epochs
-        builder.hidden_nodes = args.hidden_nodes
-        if args.sweep_threshold != None:
-            builder.sweepThreshold = args.sweep_threshold
-        builder.build(args.training_data, args.folds)
-        if args.output != None:
-            builder.save(args.output)
+        builder.features = load_parameter('features', args.features, config_values)
+        builder.filters = load_parameter('filters', args.filters, config_values)
+        builder.learning = load_parameter('learning', args.learning, config_values, default=0.1)
+        builder.epochs = load_parameter('epochs', args.epochs, config_values, default=100)
+        builder.hidden_nodes = load_parameter('hidden_nodes', args.hidden_nodes, config_values, default=5)
+        builder.sweepThreshold = load_parameter('sweep_threshold', args.sweep_threshold, config_values)
+        builder.build(load_parameter('training_data', args.training_data, config_values), 
+                load_parameter('folds', args.folds, config_values, default=10))
+        output = load_parameter('output', args.output, config_values)
+        if output != None:
+            builder.save(output)
     else:
         parser.print_help()
