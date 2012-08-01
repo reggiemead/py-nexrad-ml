@@ -27,7 +27,11 @@ def dopConversion(x):
     else:
         return BADVAL
 
+#def b10Conversion(x):
+
 def bufferData(f, num):
+    if num <= 0:
+        return None
     data = f.read(num)
     while len(data) < num:
         nextData = f.read(num - len(data))
@@ -49,7 +53,7 @@ class Packet9(object):
                  "rayTime, rayDate, unamRng, azm, rayNum, rayStatus, elev, elevNum, reflRng, " \
                  "dopRng, reflSize, dopSize, numRefl, numDop, secNum, sysCal, reflPtr, velPtr, " \
                  "spcPtr, velRes, volCpat, refPtrp, velPtrp, spcPtrp, nyqVel, atmAtt, minDif";
-        self.__dict__.update(dict(zip(fields, struct.unpack(">12sh2B2hi2hi14hf5h8x6h34x", bufferData(f, 128)))))
+        self.__dict__.update(dict(zip(fields.split(', '), struct.unpack(">12sh2B2hi2hi14hf5h8x6h34x", bufferData(f, 128)))))
         self.data = struct.unpack("2300B", bufferData(f, 2300))
         self.fts = bufferData(f, 4)
 
@@ -82,40 +86,75 @@ class Packet9(object):
 
 class PacketB10(object):
     def __init__(self, f):
+        self.stream = f
         fields = "ctm, msgSize, msgChannel, msgType, idSeq, msgDate, msgTime, numSeg, segNum, " \
                  "header, identifier, rayTime, rayDate, azmNum, azmAngle, compression, radialLength, " \
                  "azmRes, status, elevNum, cutNum, elevAngle, spotBlanking, azmIdxMode, dbCount, volPtr, elevPtr, radialPtr"
+        self.__dict__.update(self.readFields(fields, ">12sh2B2hi2h4si2hfBxh4Bf2Bh3i", 72))
+        mPtrs = struct.unpack(">6i", bufferData(f, 24))
+        dataPtr = 0x44
+        if self.dbCount > 0:
+            if self.volPtr > dataPtr:
+                bufferData(f, self.volPtr - dataPtr)
+            self.volume = self.readFields("type, name, size, majorVersion, minorVersion, majorVersion, latitude, longitude, siteHeight, feedhornHeight, calibration, hTx, vTx, zdrCalibration, initialDp, vcp", ">B3sh2B2f2h5fh2x", 44)
+            dataPtr = self.volPtr + 44
+        if self.dbCount > 1:
+            if self.elevPtr > dataPtr:
+                bufferData(f, self.elevPtr - dataPtr)
+            self.elevation = self.readFields("type, name, size, attenuation, calibration", ">B3s2hf", 12)
+            dataPtr = self.elevPtr + 12
+        if self.dbCount > 2:
+            if self.radialPtr > dataPtr:
+                bufferData(f, self.radialPtr - dataPtr)
+            self.radial = self.readFields("type, name, size, unamRange, hNoise, vNoise, nyq", ">B3s2h2fh2x", 20)
+            dataPtr = self.radialPtr + 20
 
-        data = struct.unpack(">12sh2B2hi2h4si2hfBxh4Bf2Bh3i", bufferData(f, 72))
-        self.__dict__.update(dict(zip(fields, data)))
         self.moments = {}
 
+        for i in range(self.dbCount - 3):
+            if mPtrs[i] > dataPtr:
+                bufferData(f, mPtrs[i] - dataPtr)
+            moment = self.readFields("type, name, gates, range, gateSize, tover, snr, cFlags, wordSize, scale, offset", ">B3s4x5h2B2f", 28)
+            dataSize = moment['gates'] * (moment['wordSize'] / 8)
+            moment['data'] = struct.unpack(">%dB" % dataSize, bufferData(f, dataSize))
+            self.moments[moment['name']] = moment
+            dataPtr = mPtrs[i] + 28 + dataSize
+
+        endPtr = (self.msgSize * 2) - 0x10
+        if dataPtr < endPtr:
+            bufferData(f, endPtr - dataPtr)
+
+    def readFields(self, fields, struct_org, size):
+        return dict(zip(fields.split(", "), struct.unpack(struct_org, bufferData(self.stream, size))))
     def getVCP(self):
-        pass
+        return self.volume['vcp']
     def getUnamRange(self):
-        pass
+        return self.radial['unamRange']
     def getRefGateSize(self):
-        pass
+        return self.moments['REF']['gateSize']
     def getDopGateSize(self):
-        pass
+        return self.moments['VEL']['gateSize']
     def getRefRange(self):
-        pass
+        return self.moments['REF']['range']
     def getDopRange(self):
-        pass
+        return self.moments['VEL']['range']
     def getNumRef(self):
-        pass
+        return self.moments['REF']['gates']
     def getNumDop(self):
-        pass
+        return self.moments['VEL']['gates']
     def getAzimuth(self):
-        pass
+        return self.azmAngle
     def getElevation(self):
-        pass
+        return self.elevAngle
+
+    """TODO Fix Data Conversion"""
     def getRefData(self):
-        pass
+        return self.moments['REF']['data']
     def getVelData(self):
-        pass
+        return self.moments['VEL']['data']
     def getSwData(self):
-        pass
+        return self.moments['SW ']['data']
+    """TODO Fix Data Conversion"""
 
 
 class Level2Scan(object):
@@ -211,7 +250,6 @@ class Sweep(object):
             Header = namedtuple('Header', 'name, date, time, call')
             self.header = Header._make(struct.unpack(">12s2xhi4s", f.read(24)))
 
-
     def loadScansForSweep(self, f, angle):
         scan = self.readNextScan(f)
         vcp_angles = self.vcp_scan_angles[scan.vcp]
@@ -241,19 +279,4 @@ class Sweep(object):
     def readPacket(self, f):
         if self.build == 9:
             return Packet9(f, self)
-        else:
-            return Packet10(f, self)
-
-    """
-    def readBuild9Packet(self, f):
-        PacketHeader = namedtuple('PacketHeader', 'ctm, msgSize, msgChannel, msgType, idSeq, msgDate, msgTime, numSeg, segNum')
-        pheader = PacketHeader._make(struct.unpack(">12sh2B2hi2h", self.bufferData(f, 28)))
-        
-        if pheader.msgType == 1:
-            RayPacket = namedtuple('RayPacket', 'header, rayTime, rayDate, unamRng, azm, rayNum, rayStatus, elev, elevNum, reflRng, dopRng, reflSize, dopSize, numRefl, numDop, secNum, sysCal, reflPtr, velPtr, spcPtr, velRes, volCpat, refPtrp, velPtrp, spcPtrp, nyqVel, atmAtt, minDif, data, fts')
-            return RayPacket._make((pheader,) + struct.unpack(">i14hf5h8x6h34x", self.bufferData(f, 100)) + (self.bufferData(f, 2300), self.bufferData(f, 4)))
-        else:
-            SkipPacket = namedtuple('SkipPacket', 'header')
-            self.bufferData(f, 2404)
-            return SkipPacket._make((pheader,))
-    """
+        return Packet10(f, self)

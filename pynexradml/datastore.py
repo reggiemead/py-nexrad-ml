@@ -15,6 +15,22 @@ class Datastore(object):
     def __init__(self, path=""):
         self.path = path
 
+    def displayDatasets(self):
+        ds = tables.openFile(os.path.join(self.path, "datastore.h5"), mode="r", title="Datastore")
+        print "Datasets:"
+        for node in ds.root:
+            if node._v_name != 'manifest':
+                print node._v_name
+        ds.close()
+
+    def displayDataset(self, name):
+        ds = tables.openFile(os.path.join(self.path, "datastore.h5"), mode="r", title="Datastore")
+        print "Contents of %s Dataset:" % name
+        manifest = self.getManifest(name)
+        for entry in manifest:
+            print "%s, class = %d" % entry
+        ds.close()
+
     def rebuild(self):
         ds = tables.openFile(os.path.join(self.path, "datastore.h5"), mode="w", title="Datastore")
         mf_group = ds.createGroup("/", 'manifest', 'Data Manifest')
@@ -90,6 +106,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create and Manage PyNEXRAD Datastores')
     parser.add_argument('-d', '--data_dir')
     parser.add_argument('-r', '--rebuild', action='store_true')
+    parser.add_argument('--show_datasets', action='store_true')
+    parser.add_argument('--desc_dataset')
     parser.add_argument('-i', '--import_dir')
     args = parser.parse_args()
 
@@ -99,4 +117,12 @@ if __name__ == '__main__':
     elif args.import_dir != None:
         ds = Datastore(args.data_dir)
         ds.importDataset(args.import_dir)
+    elif args.show_datasets:
+        ds = Datastore(args.data_dir)
+        ds.displayDatasets()
+    elif args.desc_dataset != None:
+        ds = Datastore(args.data_dir)
+        ds.displayDataset(args.desc_dataset)
+    else:
+        parser.print_help()
 
