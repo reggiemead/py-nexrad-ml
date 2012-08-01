@@ -11,6 +11,32 @@ from collections import namedtuple
 BADVAL = 0x20000
 RFVAL = BADVAL - 1
 
+def refConversion(x):
+    if x > 1:
+        return ((x - 2) / 2) - 32
+    elif x == 1:
+        return RFVAL
+    else:
+        return BADVAL
+
+def dopConversion(x):
+    if x > 1:
+        return ((x - 2) / 2) - 63.5
+    elif x == 1:
+        return RFVAL
+    else:
+        return BADVAL
+
+def bufferData(f, num):
+    data = f.read(num)
+    while len(data) < num:
+        nextData = f.read(num - len(data))
+        if len(nextData) == 0:
+                raise Level2Error("Data Error, expected %d but data ends at %d." % (num, len(data)))
+        data += nextData
+    return data
+
+
 class Level2Error(Exception):
     def __init__(self, value):
         self.value = value
@@ -18,57 +44,115 @@ class Level2Error(Exception):
         return repr(self.value)
 
 class Packet9(object):
-    def __init__(self, f, sweep):
+    def __init__(self, f):
         fields = "ctm, msgSize, msgChannel, msgType, idSeq, msgDate, msgTime, numSeg, segNum, " \
                  "rayTime, rayDate, unamRng, azm, rayNum, rayStatus, elev, elevNum, reflRng, " \
                  "dopRng, reflSize, dopSize, numRefl, numDop, secNum, sysCal, reflPtr, velPtr, " \
-                 "spcPtr, velRes, volCpat, refPtrp, velPtrp, spcPtrp, nyqVel, atmAtt, minDif, data, fts";
-        data = struct.unpack(">12sh2B2hi2hi14hf5h8x6h34x", sweep.bufferData(f, 128)) + (sweep.bufferData(f, 2300), sweep.bufferData(f, 4))
-        self.__dict__.update(dict(zip(fields, data)))
+                 "spcPtr, velRes, volCpat, refPtrp, velPtrp, spcPtrp, nyqVel, atmAtt, minDif";
+        self.__dict__.update(dict(zip(fields, struct.unpack(">12sh2B2hi2hi14hf5h8x6h34x", bufferData(f, 128)))))
+        self.data = struct.unpack("2300B", bufferData(f, 2300))
+        self.fts = bufferData(f, 4)
+
+    def getVCP(self):
+        return self.volCpat
+    def getUnamRange(self):
+        return self.unamRng
+    def getRefGateSize(self):
+        return self.reflSize
+    def getDopGateSize(self):
+        return self.dopSize
+    def getRefRange(self):
+        return self.reflRng
+    def getDopRange(self):
+        return self.dopRng
+    def getNumRef(self):
+        return self.numRefl
+    def getNumDop(self):
+        return self.numDop
+    def getAzimuth(self):
+        return self.azm
+    def getElevation(self):
+        return self.elev
+    def getRefData(self):
+        return map(refConversion, self.data[self.reflPtr - 100 : self.reflPtr - 100 + self.numRefl])
+    def getVelData(self):
+        return map(dopConversion, self.data[self.velPtr - 100 : self.velPtr - 100 + self.numDop])
+    def getSwData(self):
+        return map(dopConversion, self.data[self.spcPtr - 100 : self.spcPtr - 100 + self.numDop])
 
 class PacketB10(object):
-    def __init__(self, f, sweep):
+    def __init__(self, f):
         fields = "ctm, msgSize, msgChannel, msgType, idSeq, msgDate, msgTime, numSeg, segNum, " \
                  "header, identifier, rayTime, rayDate, azmNum, azmAngle, compression, radialLength, " \
                  "azmRes, status, elevNum, cutNum, elevAngle, spotBlanking, azmIdxMode, dbCount, volPtr, elevPtr, radialPtr"
 
-        data = struct.unpack(">12sh2B2hi2h4si2hfBxh4Bf2Bh3i", sweep.bufferData(f, 72))
+        data = struct.unpack(">12sh2B2hi2h4si2hfBxh4Bf2Bh3i", bufferData(f, 72))
+        self.__dict__.update(dict(zip(fields, data)))
+        self.moments = {}
+
+    def getVCP(self):
+        pass
+    def getUnamRange(self):
+        pass
+    def getRefGateSize(self):
+        pass
+    def getDopGateSize(self):
+        pass
+    def getRefRange(self):
+        pass
+    def getDopRange(self):
+        pass
+    def getNumRef(self):
+        pass
+    def getNumDop(self):
+        pass
+    def getAzimuth(self):
+        pass
+    def getElevation(self):
+        pass
+    def getRefData(self):
+        pass
+    def getVelData(self):
+        pass
+    def getSwData(self):
+        pass
+
+
 class Level2Scan(object):
     def __init__(self, packets):
-        self.vcp = packets[0].volCpat
-        self.unam = packets[0].unamRng * 100 #Range in meters
-        self.rGateSize = packets[0].reflSize
-        self.rStartRange = packets[0].reflRng
-        self.dGateSize = packets[0].dopSize
-        self.dStartRange = packets[0].dopRng
+        self.vcp = packets[0].getVCP()
+        self.unam = packets[0].getUnamRange() * 100 #Range in meters
+        self.rGateSize = packets[0].getRefGateSize()
+        self.rStartRange = packets[0].getRefRange()
+        self.dGateSize = packets[0].getDopGateSize()
+        self.dStartRange = packets[0].getDopRange()
         self.refs = []
         self.vels = []
         self.sws = []
 
-        self.azimuth = map(lambda x: (x.azm / 8 * (180 / 4096)) % 360, packets)
-        self.elev = map(lambda x: x.elev / 8 * (180 / 4096), packets)
+        self.azimuth = map(lambda x: (x.getAzimuth() / 8 * (180 / 4096)) % 360, packets)
+        self.elev = map(lambda x: x.getElevation() / 8 * (180 / 4096), packets)
 
-        self.isRScan = (packets[0].numRefl > 0)
-        self.isDScan = (packets[0].numDop > 0)
+        self.isRScan = (packets[0].getNumRef() > 0)
+        self.isDScan = (packets[0].getNumDop() > 0)
 
         if self.isRScan:
-            self.refs = np.zeros(packets[0].numRefl * len(packets))
+            self.refs = np.zeros(packets[0].getNumRef() * len(packets))
             self.refs.shape = (len(packets), -1)
 
         if self.isDScan:
-            self.vels = np.zeros(packets[0].numDop * len(packets))
+            self.vels = np.zeros(packets[0].getNumDop() * len(packets))
             self.vels.shape = (len(packets), -1)
-            self.sws = np.zeros(packets[0].numDop * len(packets))
+            self.sws = np.zeros(packets[0].getNumDop() * len(packets))
             self.sws.shape = (len(packets), -1)
 
         idx = 0
         for packet in packets:
-            data = struct.unpack("2300B", packet.data)
             if self.isRScan:
-                self.refs[idx, :] = map(self._refConversion, data[packet.reflPtr - 100 : packet.reflPtr - 100 + packet.numRefl])
+                self.refs[idx, :] = packet.getRefData()
             if self.isDScan:
-                self.vels[idx, :] = map(self._dopConversion, data[packet.velPtr - 100 : packet.velPtr - 100 + packet.numDop])
-                self.sws[idx, :] = map(self._dopConversion, data[packet.spcPtr - 100 : packet.spcPtr - 100 + packet.numDop])
+                self.vels[idx, :] = packet.getVelData()
+                self.sws[idx, :] = packet.getSwData()
             idx += 1
 
     def _refConversion(self, x):
@@ -144,32 +228,23 @@ class Sweep(object):
         packets = []
         packet = self.readPacket(f)
         #search for beginning of scan
-        while packet.header.msgType != 1 or (packet.rayStatus != 0 and packet.rayStatus != 3):
+        while packet.msgType != 1 or (packet.rayStatus != 0 and packet.rayStatus != 3):
             packet = self.readPacket(f)
         #search for end of scan
-        while packet.header.msgType != 1 or (packet.rayStatus != 2 and packet.rayStatus != 4):
-            if packet.header.msgType == 1:
+        while packet.msgType != 1 or (packet.rayStatus != 2 and packet.rayStatus != 4):
+            if packet.msgType == 1:
                 packets.append(packet)
             packet = self.readPacket(f)
         packets.append(packet)
         return Level2Scan(packets)
 
-
     def readPacket(self, f):
         if self.build == 9:
-            return self.readBuild9Packet(f)
+            return Packet9(f, self)
         else:
-            return self.readBuild10Packet(f)
+            return Packet10(f, self)
 
-    def bufferData(self, f, num):
-        data = f.read(num)
-        while len(data) < num:
-            nextData = f.read(num - len(data))
-            if len(nextData) == 0:
-                    raise Level2Error("Data Error, expected %d but data ends at %d." % (num, len(data)))
-            data += nextData
-        return data
-
+    """
     def readBuild9Packet(self, f):
         PacketHeader = namedtuple('PacketHeader', 'ctm, msgSize, msgChannel, msgType, idSeq, msgDate, msgTime, numSeg, segNum')
         pheader = PacketHeader._make(struct.unpack(">12sh2B2hi2h", self.bufferData(f, 28)))
@@ -181,19 +256,4 @@ class Sweep(object):
             SkipPacket = namedtuple('SkipPacket', 'header')
             self.bufferData(f, 2404)
             return SkipPacket._make((pheader,))
-
-    def readBuild10Packet(self, f):
-        pass
-        """
-        PacketHeader = namedtuple('PacketHeader', 'ctm, msgSize, msgChannel, msgType, idSeq, msgDate, msgTime, numSeg, segNum')
-        pheader = PacketHeader._make(struct.unpack(">12sh2B2hi2h", self.bufferData(f, 28)))
-
-        if pheader.msgType == 31:
-            RayPacket = namedtuple('RayPacket', 'header, identifier, rayTime, rayDate, azmNum, azmAngle, compression, radialLength, azmRes, status, elevNum, cutNum, elevAngle, spotBlanking, azmIdxMode, dbCount, volPtr, elevPtr, radialPtr')
-            return RayPacket._make((pheader,) + struct.unpack(">4si2hfBxh4Bf2Bh3i", self.bufferData(f, 44)) #+ (self.bufferData(f, 2300), self.bufferData(f, 4)))
-        else:
-            SkipPacket = namedtuple('SkipPacket', 'header')
-            self.bufferData(f, 2404)
-            return SkipPacket._make((pheader,))
-        """
-
+    """
