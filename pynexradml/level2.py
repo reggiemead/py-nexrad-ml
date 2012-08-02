@@ -5,6 +5,7 @@ import struct
 import zcomp
 import gzip
 import math
+import util
 
 from collections import namedtuple
 
@@ -27,8 +28,6 @@ def dopConversion(x):
     else:
         return BADVAL
 
-#def b10Conversion(x):
-
 def bufferData(f, num):
     if num <= 0:
         return None
@@ -39,7 +38,6 @@ def bufferData(f, num):
                 raise Level2Error("Data Error, expected %d but data ends at %d." % (num, len(data)))
         data += nextData
     return data
-
 
 class Level2Error(Exception):
     def __init__(self, value):
@@ -83,21 +81,32 @@ class Packet9(object):
         return map(dopConversion, self.data[self.velPtr - 100 : self.velPtr - 100 + self.numDop])
     def getSwData(self):
         return map(dopConversion, self.data[self.spcPtr - 100 : self.spcPtr - 100 + self.numDop])
+    def isRadialData(self):
+        return self.msgType == 1
 
-class PacketB10(object):
+class Packet10(object):
     def __init__(self, f):
         self.stream = f
         fields = "ctm, msgSize, msgChannel, msgType, idSeq, msgDate, msgTime, numSeg, segNum, " \
-                 "header, identifier, rayTime, rayDate, azmNum, azmAngle, compression, radialLength, " \
-                 "azmRes, status, elevNum, cutNum, elevAngle, spotBlanking, azmIdxMode, dbCount, volPtr, elevPtr, radialPtr"
-        self.__dict__.update(self.readFields(fields, ">12sh2B2hi2h4si2hfBxh4Bf2Bh3i", 72))
+                 "identifier, rayTime, rayDate, azmNum, azmAngle, compression, radialLength, " \
+                 "azmRes, rayStatus, elevNum, cutNum, elevAngle, spotBlanking, azmIdxMode, dbCount, volPtr, elevPtr, radialPtr"
+        header = self.readFields(fields, ">12sh2B2hi2h4si2hfBxh4Bf2Bh3i", 72)
+        self.__dict__.update(header)
+
+        if self.msgType != 31:
+            bufferData(f, 2360)
+            return
+
+        util.LOG(self.__dict__)
+
         mPtrs = struct.unpack(">6i", bufferData(f, 24))
         dataPtr = 0x44
         if self.dbCount > 0:
             if self.volPtr > dataPtr:
                 bufferData(f, self.volPtr - dataPtr)
-            self.volume = self.readFields("type, name, size, majorVersion, minorVersion, majorVersion, latitude, longitude, siteHeight, feedhornHeight, calibration, hTx, vTx, zdrCalibration, initialDp, vcp", ">B3sh2B2f2h5fh2x", 44)
+            self.volume = self.readFields("type, name, size, majorVersion, minorVersion, latitude, longitude, siteHeight, feedhornHeight, calibration, hTx, vTx, zdrCalibration, initialDp, vcp", ">B3sh2B2f2h5fh2x", 44)
             dataPtr = self.volPtr + 44
+            util.LOG(self.volume)
         if self.dbCount > 1:
             if self.elevPtr > dataPtr:
                 bufferData(f, self.elevPtr - dataPtr)
@@ -115,8 +124,17 @@ class PacketB10(object):
             if mPtrs[i] > dataPtr:
                 bufferData(f, mPtrs[i] - dataPtr)
             moment = self.readFields("type, name, gates, range, gateSize, tover, snr, cFlags, wordSize, scale, offset", ">B3s4x5h2B2f", 28)
-            dataSize = moment['gates'] * (moment['wordSize'] / 8)
-            moment['data'] = struct.unpack(">%dB" % dataSize, bufferData(f, dataSize))
+            dataSize = int(moment['gates'] * (moment['wordSize'] / 8))
+            rawdata= struct.unpack(">%dB" % dataSize, bufferData(f, dataSize))
+            data = []
+            for j in range(len(rawdata)):
+                if rawdata[j] == 0:
+                    data.append(BADVAL)
+                elif rawdata[j] == 1:
+                    data.append(RFVAL)
+                else:
+                    data.append((rawdata[j] - moment['offset']) / moment['scale'])
+            moment['data'] = data
             self.moments[moment['name']] = moment
             dataPtr = mPtrs[i] + 28 + dataSize
 
@@ -139,41 +157,46 @@ class PacketB10(object):
     def getDopRange(self):
         return self.moments['VEL']['range']
     def getNumRef(self):
+        if not 'REF' in self.moments:
+            return 0
         return self.moments['REF']['gates']
     def getNumDop(self):
+        if not 'VEL' in self.moments:
+            return 0
         return self.moments['VEL']['gates']
     def getAzimuth(self):
         return self.azmAngle
     def getElevation(self):
         return self.elevAngle
-
-    """TODO Fix Data Conversion"""
     def getRefData(self):
         return self.moments['REF']['data']
     def getVelData(self):
         return self.moments['VEL']['data']
     def getSwData(self):
         return self.moments['SW ']['data']
-    """TODO Fix Data Conversion"""
-
+    def isRadialData(self):
+        return self.msgType == 31
 
 class Level2Scan(object):
     def __init__(self, packets):
         self.vcp = packets[0].getVCP()
         self.unam = packets[0].getUnamRange() * 100 #Range in meters
-        self.rGateSize = packets[0].getRefGateSize()
-        self.rStartRange = packets[0].getRefRange()
-        self.dGateSize = packets[0].getDopGateSize()
-        self.dStartRange = packets[0].getDopRange()
+
+        self.isRScan = (packets[0].getNumRef() > 0)
+        self.isDScan = (packets[0].getNumDop() > 0)
+
+        if self.isRScan:
+            self.rGateSize = packets[0].getRefGateSize()
+            self.rStartRange = packets[0].getRefRange()
+        if self.isDScan:
+            self.dGateSize = packets[0].getDopGateSize()
+            self.dStartRange = packets[0].getDopRange()
         self.refs = []
         self.vels = []
         self.sws = []
 
         self.azimuth = map(lambda x: (x.getAzimuth() / 8 * (180 / 4096)) % 360, packets)
         self.elev = map(lambda x: x.getElevation() / 8 * (180 / 4096), packets)
-
-        self.isRScan = (packets[0].getNumRef() > 0)
-        self.isDScan = (packets[0].getNumDop() > 0)
 
         if self.isRScan:
             self.refs = np.zeros(packets[0].getNumRef() * len(packets))
@@ -193,22 +216,6 @@ class Level2Scan(object):
                 self.vels[idx, :] = packet.getVelData()
                 self.sws[idx, :] = packet.getSwData()
             idx += 1
-
-    def _refConversion(self, x):
-        if x > 1:
-            return ((x - 2) / 2) - 32
-        elif x == 1:
-            return RFVAL
-        else:
-            return BADVAL
-
-    def _dopConversion(self, x):
-        if x > 1:
-            return ((x - 2) / 2) - 63.5
-        elif x == 1:
-            return RFVAL
-        else:
-            return BADVAL
 
 class Sweep(object):
     def __init__(self, path, angle = 0.5):
@@ -266,11 +273,11 @@ class Sweep(object):
         packets = []
         packet = self.readPacket(f)
         #search for beginning of scan
-        while packet.msgType != 1 or (packet.rayStatus != 0 and packet.rayStatus != 3):
+        while (packet.isRadialData() != True) or (packet.rayStatus != 0 and packet.rayStatus != 3):
             packet = self.readPacket(f)
         #search for end of scan
-        while packet.msgType != 1 or (packet.rayStatus != 2 and packet.rayStatus != 4):
-            if packet.msgType == 1:
+        while  (packet.isRadialData() != True) or (packet.rayStatus != 2 and packet.rayStatus != 4):
+            if packet.isRadialData():
                 packets.append(packet)
             packet = self.readPacket(f)
         packets.append(packet)
@@ -278,5 +285,5 @@ class Sweep(object):
 
     def readPacket(self, f):
         if self.build == 9:
-            return Packet9(f, self)
-        return Packet10(f, self)
+            return Packet9(f)
+        return Packet10(f)
