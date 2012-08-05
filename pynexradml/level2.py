@@ -72,9 +72,9 @@ class Packet9(object):
     def getNumDop(self):
         return self.numDop
     def getAzimuth(self):
-        return self.azm
+        return self.azm / 8 * (180 / 4096)
     def getElevation(self):
-        return self.elev
+        return self.elev / 8 * (180 / 4096)
     def getRefData(self):
         return map(refConversion, self.data[self.reflPtr - 100 : self.reflPtr - 100 + self.numRefl])
     def getVelData(self):
@@ -195,8 +195,8 @@ class Level2Scan(object):
         self.vels = []
         self.sws = []
 
-        self.azimuth = map(lambda x: (x.getAzimuth() / 8 * (180 / 4096)) % 360, packets)
-        self.elev = map(lambda x: x.getElevation() / 8 * (180 / 4096), packets)
+        self.azimuth = map(lambda x: x.getAzimuth() % 360, packets)
+        self.elev = map(lambda x: x.getElevation(), packets)
 
         if self.isRScan:
             self.refs = np.zeros(packets[0].getNumRef() * len(packets))
