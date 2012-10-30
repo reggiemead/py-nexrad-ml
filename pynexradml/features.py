@@ -4,6 +4,16 @@ import scipy.stats as stats
 BADVAL = 0x20000
 RFVAL = BADVAL - 1
 
+class test1(object):
+    def __init__(self, a, b):
+        self.output = int(a) + int(b)
+    def calc(self, data):
+        return "%d" % self.output
+
+class test2(object):
+    def calc(self, data):
+        return "TEST2"
+
 def normalize(data):
     dmin = np.min(data)
     dmax = np.max(data)
