@@ -53,10 +53,14 @@ class Preprocessor(object):
         for key in self.featureKeys:
             if not key in featureMap:
                 featureMap[key] = self.features[key].calc(data, featureMap)
+
+        for key in featureMap:
+            featureMap[key] = featureMap[key].flatten()
+
         #filter data
         featureMap['_filter_'] = np.array(np.zeros(len(featureMap[featureMap.keys()[0]])))
         for key in self.filterKeys:
-            self.filters[key].applyFilter(featureMap)
+            self.filters[key].apply(featureMap)
         outputLayers = [featureMap['_filter_']]
         for key in featureMap:
             if key != '_filter_' and key in self.features:
@@ -74,7 +78,7 @@ class Preprocessor(object):
 
     def _createInstance(self, f, lib):
         m = re.match(r"(\w+)\((.*)\)", f)
-        fargs = filter(None, m.group(2).split(','))
+        fargs = [x.strip() for x in filter(None, m.group(2).split(','))]
         fClass = getattr(lib, m.group(1))
         return fClass(*fargs)
 

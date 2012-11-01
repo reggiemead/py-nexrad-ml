@@ -3,10 +3,9 @@ import os, sys
 import numpy as np
 
 sys.path.append("../")
+sys.path.append("../../")
 import unittest2 as unittest
-
-sys.path.append("../../pynexradml")
-import preprocessor
+import pynexradml.preprocessor as preprocessor
 
 class TestFeatures(unittest.TestCase):
     def setUp(self):
