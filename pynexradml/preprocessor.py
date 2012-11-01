@@ -5,12 +5,12 @@ import features, filters
 
 class Preprocessor(object):
     def __init__(self, pca = True):
-        self.featureKeys = []
         self.features = {}
+        self.featureKeys = []
         self.hiddenFeatures = {}
         self.hiddenFeatureKeys = []
+        self.filters = {}
         self.filterKeys = []
-        self.filters = []
         self.pca = pca
 
     def _addHiddenFeature(self, f):
@@ -48,7 +48,7 @@ class Preprocessor(object):
     def processData(self, data):
         #create features
         featureMap = {}
-        for key in self.hiddenFeaturesKeys:
+        for key in self.hiddenFeatureKeys:
             featureMap[key] = self.hiddenFeatures[key].calc(data, featureMap)
         for key in self.featureKeys:
             if not key in featureMap:
@@ -62,9 +62,9 @@ class Preprocessor(object):
         for key in self.filterKeys:
             self.filters[key].apply(featureMap)
         outputLayers = [featureMap['_filter_']]
-        for key in featureMap:
-            if key != '_filter_' and key in self.features:
-                outputLayers.append(featureMap[key].flatten())
+        for key in self.featureKeys:
+            if key in self.features:
+                outputLayers.append(featureMap[key])
         result = np.vstack(filter(lambda x : x[0] == 0, np.dstack(outputLayers)[0]))
         result = result[:, 1:]
 
@@ -74,7 +74,12 @@ class Preprocessor(object):
             return result
 
     def _calcPrincipleComponents(self, data):
-        pass
+        data -= np.mean(data, axis=0)
+        c = np.cov(data, rowvar=0)
+        values, vectors = la.eig(c)
+        print(values)
+        print(vectors)
+        return (np.matrix(vectors) * np.matrix(data.T)).T
 
     def _createInstance(self, f, lib):
         m = re.match(r"(\w+)\((.*)\)", f)
