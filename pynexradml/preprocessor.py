@@ -77,9 +77,8 @@ class Preprocessor(object):
         data -= np.mean(data, axis=0)
         c = np.cov(data, rowvar=0)
         values, vectors = la.eig(c)
-        print(values)
-        print(vectors)
-        return (np.matrix(vectors) * np.matrix(data.T)).T
+        featureVector = vectors[:, [values.tolist().index(x) for x in np.sort(values)[::-1]]]
+        return (np.matrix(featureVector) * np.matrix(data.T)).T
 
     def _createInstance(self, f, lib):
         m = re.match(r"(\w+)\((.*)\)", f)

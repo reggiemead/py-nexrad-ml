@@ -1,7 +1,7 @@
 import numpy as np
 
 BADVAL = 0x20000
-RFVAL = BADVAL - 1
+RFVAL = 0x1FFFF
 
 class Filter(object):
     def __init__(self):

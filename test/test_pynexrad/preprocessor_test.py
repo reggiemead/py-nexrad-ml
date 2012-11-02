@@ -44,11 +44,12 @@ class TestPreprocessor(unittest.TestCase):
                          [[2.0, 1.6], [1.0, 1.1]],
                          [[1.5, 1.6], [1.1, 0.9]]])
         output = self.processor.processData(data)
-        print(output)
-        self.assertTrue(np.allclose(output[:,0], np.array([-.827970186, 1.77758033, -.992197494, -.274210416,
-            -1.67580142, -.912949103, .0991094375, 1.14457216, .438046137, 1.22382056])))
-        self.assertTrue(np.allclose(output[:,1], np.array([-.175115307, .142857227, .384374989, .130417207,
-            -.209498461, .1752824444, -.349824698, .0464172582, .0177646297, -.162675287])))
+        self.assertTrue(np.allclose(output[:,0].flatten(), 
+            np.array([-.827970186, 1.77758033, -.992197494, -.274210416,
+            -1.67580142, -.912949103, .0991094375, 1.14457216, .438046137, 1.22382056]), atol=.00001))
+        self.assertTrue(np.allclose(output[:,1].flatten(), 
+            np.array([-.175115307, .142857227, .384374989, .130417207,
+            -.209498461, .1752824444, -.349824698, .0464172582, .0177646297, -.162675287]), atol=.00001))
         
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(TestPreprocessor)
