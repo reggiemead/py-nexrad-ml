@@ -2,7 +2,7 @@ import numpy as np
 import scipy.stats as stats
 
 BADVAL = 0x20000
-RFVAL = BADVAL - 1
+RFVAL = 0x1FFFF
 
 class Feature(object):
     def __init__(self):

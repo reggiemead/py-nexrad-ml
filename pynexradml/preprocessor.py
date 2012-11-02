@@ -4,7 +4,7 @@ import numpy.linalg as la
 import features, filters
 
 class Preprocessor(object):
-    def __init__(self, pca = True):
+    def __init__(self, pca = False):
         self.features = {}
         self.featureKeys = []
         self.hiddenFeatures = {}
@@ -69,12 +69,13 @@ class Preprocessor(object):
         result = result[:, 1:]
 
         if self.pca:
-            return self._calcPrincipleComponents(result)
+            return self.calcPCA(result)
         else:
             return result
 
-    def _calcPrincipleComponents(self, data):
+    def calcPCA(self, data):
         data -= np.mean(data, axis=0)
+        #data = data / np.std(data, axis=0)
         c = np.cov(data, rowvar=0)
         values, vectors = la.eig(c)
         featureVector = vectors[:, [values.tolist().index(x) for x in np.sort(values)[::-1]]]

@@ -1,121 +1,162 @@
 from __future__ import division
 import numpy as np
-import json
+import json, random
+
+class LogisticActivationFunction(object):
+    def __init__(self):
+        pass
+    def activate(self, x):
+        return 1 / (1 + np.exp(0 - x))
+    def derivative(self, x):
+        return np.multiply(x,  (1 - x))
+
+class HyperbolicTangentActivationFunction(object):
+    def __init__(self, a=1.7159, b=0.666666):
+        self.a = a
+        self.b = b
+    def activate(self, x):
+        return self.a * np.tanh(self.b * x)
+    def derivative(self, x):
+        return (self.a * self.b) * (1 - (np.multiply(x, x) / (self.a * self.a)))
 
 class FeedForwardNeuralNet(object):
-    def __init__(self, inputs, hidden, linear_output=True):
-        self.i_count = inputs
-        self.h_count = hidden
-        self.linear_output = linear_output
-        #network parameters
-        self.weights_h = np.matrix(np.random.rand(inputs, hidden))
-        self.weights_y = np.matrix(np.random.rand(hidden))
-        self.bias_h = np.matrix(np.random.rand(hidden))
-        self.bias_y = np.random.rand()
-        #network variables
-        self.h = np.matrix(np.zeros(hidden))
-        self.x = np.matrix(np.zeros(inputs))
-        self.sigma_h = np.matrix(np.zeros(hidden))
-        self.y = 0
-        self.sigma_y = 0
+    def __init__(self, layers=None, sigmoids=None):
+        self.weights = []
+        self.prevDeltaW = []
+        self.sigmoids = sigmoids if sigmoids != None else [LogisticActivationFunction() for i in range(1, len(layers))]
+        if layers != None:
+            if len(layers) < 2:
+                raise ValueError('Network contain at least two layers')
+            for i in range(1, len(layers)):
+                self.weights.append(np.matrix(np.random.rand(layers[i - 1] + 1, layers[i])) - 0.5)
+                self.prevDeltaW.append(np.matrix(np.zeros((layers[i - 1] + 1, layers[i]))))
+
         """
         Only used for basic examples. It is assumed that practicle applications will
         override get_learning_instance and get_validation_instance
         """
         self.learning_data = []
-        self.learning_targets = []
         self.validation_data = []
-        self.validation_targets = []
         self.activations = []
         self.accum_mse = []
+        self.shuffle = False
+        self.momentum = 0
+
+    def activate(self, inputs):
+        self.activations = [np.matrix(inputs)]
+        for i in range(len(self.weights)):
+            self.activations.append(self.sigmoids[i].activate(np.hstack([self.activations[-1], [[1]]]) * self.weights[i]))
+        return self.activations[-1]
+
+    def backProp(self, target, learning):
+        sigmas = []
+        for i in reversed(range(len(self.weights))):
+            o = self.activations[i+1]
+            D = np.matrix(np.diag(np.array(self.sigmoids[i].derivative(o))[0]))
+            if len(sigmas) == 0:
+                e = o - target
+                sigmas.insert(0, D * e)
+            else:
+                sigmas.insert(0, D * self.weights[i+1][:-1] * sigmas[0])
+        for i in range(len(self.weights)):
+            deltaW =  np.transpose(-learning * sigmas[i] * np.hstack([self.activations[i], [[1]]]))
+            if self.momentum > 0:
+                deltaW += self.momentum * self.prevDeltaW[i];
+                self.weights[i] = self.weights[i] + deltaW
+                self.prevDeltaW[i] = deltaW
+            else:
+                self.weights[i] = (self.weights[i] + deltaW)
+
+    def learn(self, learning=.03, epochs=100):
+        self.accum_mse = []
+        for i in xrange(epochs):
+            (mse, count) = 0, 0
+            for (inputs, target) in self.getLearningData():
+                output = self.activate(inputs)
+                mse += ((target - output)**2)
+                count += 1
+                self.backProp(target, learning)
+            mse = mse / count
+            self.accum_mse.append(mse)
+            print "MSE for epoch %d : %f" % (i, mse)
+        print "Final Training SSE = %f" % (self._computeSSE())
+
+    def _computeSSE(self):
+        sse = 0.0
+        for (inputs, target) in self.getLearningData():
+            output = self.activate(inputs)
+            sse += ((target - output)**2)
+        return sse
+
+    def performSimulatedAnnealing(self, alpha=.1, epochs=100000, temp=1000000, tempStep=2000, tempInterval=250):
+        energy = self._computeSSE()
+        for i in xrange(epochs):
+            print "Energy for iteration %d = %f" % (i, energy)
+            if i % tempInterval == 0:
+                temp -= tempStep
+            for layer in self.weights:
+                for index, w in np.ndenumerate(layer):
+                    storedWeight = w
+                    layer[index] = w + (alpha * (random.random() * 2 - 1))
+                    newEnergy = self._computeSSE()
+                    if newEnergy > energy:
+                        deltaE = newEnergy - energy
+                        pE = 1 / (1 + np.exp(deltaE / temp))
+                        pAccept = random.random()
+                        if pAccept < pE:
+                            energy = newEnergy
+                        else:
+                            layer[index] = storedWeight
+                    else:
+                        energy = newEnergy
 
     def serialize(self):
         properties = {
-            'linear_output' : self.linear_output,
-            'inputs' : self.i_count,
-            'hidden' : self.h_count,
-            'weights_h' : self.weights_h.tolist(),
-            'weights_y' : self.weights_y.tolist(),
-            'bias_h' : self.bias_h.tolist(),
-            'bias_y' : self.bias_y}
+            'weights' : [x.tolist() for x in self.weights]
+            }
         return properties
 
     def deserialize(self, properties):
-        self.linear_output = properties['linear_output']
-        self.i_count = properties['inputs']
-        self.h_count = properties['hidden']
-        #load network parameters
-        self.weights_h = np.matrix(properties['weights_h'])
-        self.weights_y = np.matrix(properties['weights_y'])
-        self.bias_h = np.matrix(properties['bias_h'])
-        self.bias_y = properties['bias_y']
-        #initialize network variables
-        self.h = np.matrix(np.zeros(self.weights_h.shape[1]))
-        self.x = np.matrix(np.zeros(self.weights_h.shape[0]))
-        self.sigma_h = np.matrix(np.zeros(self.weights_h.shape[1]))
-        self.y = 0
-        self.sigma_y = 0
-        self.learning_properties = []
-        self.learning_targets = []
-        self.validation_properties = []
-        self.validation_targets = []
-        self.activations = []
-        self.accum_mse = []
+        self.weights = [np.matrix(x) for x in properties['weights']]
 
     def save(self, filename):
         data_str = json.dumps(self.serialize())
         with open(filename, 'w') as f:
             f.write(data_str)
 
-    def load(self, filename):
+    @staticmethod
+    def load(filename):
         with open(filename, 'r') as f:
             data_str = f.read()
         properties = json.loads(data_str)
-        self.deserialize(properties)
+        result = FeedForwardNeuralNet()
+        result.deserialize(properties)
+        return result
 
-    def activate(self, inputs):
-        #copy inputs
-        self.x = np.matrix(inputs)
-        #hidden layer activation
-        self.h = np.tanh((self.x * self.weights_h) + self.bias_h)
-        #output layer activation
-        output = (self.h * np.transpose(self.weights_y)) + self.bias_y
-        if self.linear_output:
-            self.y = np.asscalar(output)
-        else:
-            self.y = np.asscalar(1 / (1 + np.exp(-output)))
-        return self.y
+    def validate(self, callback=None):
+        (mse, count) = 0, 0
+        for (inputs, target) in self.getValidationData():
+            output = self.activate(inputs)
+            mse += ((target - output)**2)
+            count += 1
+            if callback != None:
+                callback(inputs, target, output)
+        self.mse = mse / count
+        print "  - MSE = %f" % self.mse
+        return self.mse
 
-    def back_prop(self, target, learning):
-        #calculate output layer error
-        if self.linear_output:
-            self.sigma_y = (target - self.y)
-        else:
-            self.sigma_y = self.y * (1 - self.y) * (target - self.y)
-        #calculate hidden layer error
-        self.sigma_h = np.multiply((1 - np.multiply(self.h, self.h)), self.weights_y) * self.sigma_y
-        #update output layer weights
-        self.weights_y = self.weights_y + (learning * self.h * self.sigma_y)
-        #update output layer bias
-        self.bias_y = self.bias_y + (learning * self.sigma_y)
-        #update hidden layer weights
-        self.weights_h = self.weights_h + (learning * np.transpose(self.x) * self.sigma_h)
-        #update hidden layer bias
-        self.bias_h = self.bias_h + (learning * self.sigma_h)
+    def getLearningData(self):
+        if self.shuffle:
+            np.random.shuffle(self.learning_data)
+        for i in xrange(len(self.learning_data)):
+            yield (self.learning_data[i, :-1], self.learning_data[i, -1])
 
-    def learn(self, learning=.03, epochs=100):
-        self.accum_mse = []
-        for i in xrange(epochs):
-            (mse, count) = 0, 0
-            for (inputs, target) in self.get_learning_data():
-                output = self.activate(inputs)
-                mse += ((target - output)**2)
-                count += 1
-                self.back_prop(target, learning)
-            mse = mse / count
-            self.accum_mse.append(mse)
-            print "MSE for epoch %d : %f" % (i, mse)
+    def getValidationData(self):
+        for i in xrange(len(self.validation_data)):
+            yield (self.validation_data[i, :-1], self.validation_data[i, -1])
 
+
+"""
     def printStats(self, tp, tn, fp, fn, mse):
         accuracy = (tp + tn) / (tp + tn + fp + fn)
         precision = 0.0 if (tp + fp) == 0 else tp / (tp + fp)
@@ -162,79 +203,4 @@ class FeedForwardNeuralNet(object):
         self.printStats(tp, tp, fp, fn, self.mse)
 
         return (self.mse, tp, tn, fp, fn)
-
-    def get_learning_data(self):
-        for i in xrange(len(self.learning_data)):
-            yield (self.learning_data[i], self.learning_targets[i])
-    def get_validation_data(self):
-        for i in xrange(len(self.validation_data)):
-            yield (self.validation_data[i], self.validation_targets[i])
-
-if __name__ == '__main__':
-    import math
-    import random
-
-    import matplotlib
-    from pylab import figure, plot, legend, subplot, grid, xlabel, ylabel, show, title
-    
-
-    pop_len = 200
-    factor = 1.0 / float(pop_len)
-    population = [[i, math.sin(float(i) * factor * 10.0) + \
-                    random.gauss(float(i) * factor, .2)]
-                        for i in range(pop_len)]
-    all_inputs = []
-    all_targets = []
-
-    def population_gen(population):
-        pop_sort = [item for item in population]
-        random.shuffle(pop_sort)
-        for item in pop_sort:
-            yield item
-
-    #   Build the inputs
-    for position, target in population_gen(population):
-        pos = float(position)
-        all_inputs.append([random.random(), pos * factor])
-        all_targets.append(target)
-
-    network = FeedForwardNeuralNet(2,10)
-    length = len(all_inputs) // 10 * 8
-    network.learning_data = all_inputs[0:length]
-    network.learning_targets = all_targets[0:length]
-    network.validation_data = all_inputs[length:]
-    network.validation_targets = all_targets[length:]
-    network.learn(learning=0.1, epochs=125)
-    mse = network.validate()
-    print network.validation_targets
-
-    test_positions = [item[1] * 1000.0 for item in network.validation_data]
-    all_targets1 = network.validation_targets
-    allactuals = network.activations
-
-    f = figure(figsize=(12,10), dpi=80)
-    #   This is quick and dirty, but it will show the results
-    subplot(3, 1, 1)
-    plot([i[1] for i in population])
-    title("Population")
-    grid(True)
-
-    subplot(3, 1, 2)
-    plot(test_positions, all_targets1, 'bo', label='targets')
-    plot(test_positions, allactuals, 'ro', label='actuals')
-    grid(True)
-    legend(loc='lower left', numpoints=1)
-    title("Test Target Points vs Actual Points")
-
-    subplot(3, 1, 3)
-    plot(range(1, len(network.accum_mse) + 1, 1), network.accum_mse)
-    xlabel('epochs')
-    ylabel('mean squared error')
-    grid(True)
-    title("Mean Squared Error by Epoch")
-
-    show()
-    
-
-
-        
+    """
