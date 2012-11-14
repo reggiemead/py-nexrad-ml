@@ -28,7 +28,7 @@ if __name__ == "__main__":
     for f in args.filters:
         processor.createAndAddFilter(f)
 
-    data = processor.processData(data)
+    #data = processor.processData(data)
     data = processor.calcPCA(data)
     np.random.shuffle(data)
 

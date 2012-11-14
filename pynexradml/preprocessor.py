@@ -1,7 +1,7 @@
 import re
 import numpy as np
 import numpy.linalg as la
-import features, filters
+import features, filters, normalizers
 
 class Preprocessor(object):
     def __init__(self, pca = False):
@@ -11,6 +11,8 @@ class Preprocessor(object):
         self.hiddenFeatureKeys = []
         self.filters = {}
         self.filterKeys = []
+        self.normalizers = {}
+        self.normalizerKeys = []
         self.pca = pca
 
     def _addHiddenFeature(self, f):
@@ -33,17 +35,27 @@ class Preprocessor(object):
         self.filterKeys.append(key)
         self.filters[key] = f
 
+    def addNormalizer(self, n, key):
+        self.normalizerKeys.append(key)
+        self.normalizers[key] = n
+
     def createFeature(self, f):
         return self._createInstance(f, features)
 
     def createFilter(self, f):
         return self._createInstance(f, filters)
 
+    def createNormalizer(self, n):
+        return self._createInstance(n, normalizers)
+
     def createAndAddFeature(self, f):
         self.addFeature(self.createFeature(f), f)
 
     def createAndAddFilter(self, f):
         self.addFilter(self.createFilter(f), f)
+
+    def createAndAddNormalizer(self, n):
+        self.addNormalizer(self.createNormalizer(n), n)
 
     def processData(self, data):
         #create features
