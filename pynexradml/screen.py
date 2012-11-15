@@ -6,28 +6,28 @@ pyximport.install()
 
 from util import LOG
 from fast_util import resample_sweep_polar
-from classifier import L2NeuralNet
+import ffnn, preprocessor
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Load Classifier and Screen new Data')
-    parser.add_argument('-c', '--classifier')
+    parser.add_argument('-i', '--input')
     parser.add_argument('-d', '--data')
     parser.add_argument('-t', '--threshold', type=float)
     args = parser.parse_args()
 
     sweeps = glob.glob(os.path.join(args.data, "*.Z")) + glob.glob(os.path.join(args.data, "*.gz"))
 
-    net = L2NeuralNet()
-    net.load(args.classifier)
+    net = ffnn.FeedForwardNeuralNet.load(args.input + ".net")
+    processor = preprocessor.Preprocessor.load(args.input + ".proc")
 
     for sweep in sweeps:
-        data = net.transformData(resample_sweep_polar(level2.Sweep(sweep)))
+        data = processor.normalize(processor.processData(resample_sweep_polar(level2.Sweep(sweep))))
         hits = 0
         for datum in data:
             output = net.activate(datum)
             LOG("Activation = %f" % output)
-            if output > 0.5:
+            if output > 0:
                 hits += 1
         ratio = hits / len(data);
         if (ratio > args.threshold):

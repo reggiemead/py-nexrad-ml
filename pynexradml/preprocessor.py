@@ -85,6 +85,12 @@ class Preprocessor(object):
         else:
             return result
 
+    def normalizeData(self, data):
+        for key in self.normalizerKeys:
+            if key in self.normalizers:
+                self.normalizers[key].apply(data)
+        return data
+
     def calcPCA(self, data):
         data -= np.mean(data, axis=0)
         #data = data / np.std(data, axis=0)
@@ -92,6 +98,36 @@ class Preprocessor(object):
         values, vectors = la.eig(c)
         featureVector = vectors[:, [values.tolist().index(x) for x in np.sort(values)[::-1]]]
         return (np.matrix(featureVector) * np.matrix(data.T)).T
+
+    def serialize(self):
+        properties = {
+            'features' : self.featureKeys,
+            'filters' : self.filterKeys,
+            'normalizers' : self.normalizerKeys
+            }
+        return properties
+
+    def deserialize(self, properties):
+        for f in properties['features']:
+            self.createAndAddFeature(f)
+        for f in properties['filters']:
+            self.createAndAddFilter(f)
+        for n in properties['normalizers']:
+            self.createAndAddNormalizer(n)
+
+    def save(self, filename):
+        data_str = json.dumps(self.serialize())
+        with open(filename, 'w') as f:
+            f.write(data_str)
+
+    @staticmethod
+    def load(filename):
+        with open(filename, 'r') as f:
+            data_str = f.read()
+        properties = json.loads(data_str)
+        result = Preprocessor()
+        result.deserialize(properties)
+        return result
 
     def _createInstance(self, f, lib):
         m = re.match(r"(\w+)\((.*)\)", f)
