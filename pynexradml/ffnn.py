@@ -23,7 +23,12 @@ class FeedForwardNeuralNet(object):
     def __init__(self, layers=None, sigmoids=None):
         self.weights = []
         self.prevDeltaW = []
-        self.sigmoids = sigmoids if sigmoids != None else [LogisticActivationFunction() for i in range(1, len(layers))]
+        if sigmoids != None:
+            self.sigmoids = sigmoids
+        elif layers != None:
+            self.sigmoids = [HyperbolicTangentActivationFunction() for i in range(1, len(layers))]
+        else: 
+            self.sigmoids = []
         if layers != None:
             if len(layers) < 2:
                 raise ValueError('Network contain at least two layers')
@@ -41,6 +46,7 @@ class FeedForwardNeuralNet(object):
         self.accum_mse = []
         self.shuffle = False
         self.momentum = 0
+        self.verbose = False
 
     def activate(self, inputs):
         self.activations = [np.matrix(inputs)]
@@ -76,6 +82,8 @@ class FeedForwardNeuralNet(object):
                 mse += ((target - output)**2)
                 count += 1
                 self.backProp(target, learning)
+                if self.verbose and count % 10000 == 0:
+                    print "%d instances processed for epoch %d" % (count, i)
             mse = mse / count
             self.accum_mse.append(mse)
             print "MSE for epoch %d : %f" % (i, mse)
@@ -131,6 +139,7 @@ class FeedForwardNeuralNet(object):
         properties = json.loads(data_str)
         result = FeedForwardNeuralNet()
         result.deserialize(properties)
+        result.sigmoids = [HyperbolicTangentActivationFunction() for i in range(len(result.weights))]
         return result
 
     def validate(self, callback=None):
@@ -154,7 +163,6 @@ class FeedForwardNeuralNet(object):
     def getValidationData(self):
         for i in xrange(len(self.validation_data)):
             yield (self.validation_data[i, :-1], self.validation_data[i, -1])
-
 
 """
     def printStats(self, tp, tn, fp, fn, mse):

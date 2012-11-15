@@ -11,9 +11,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Load Classifier and Screen new Data')
-    parser.add_argument('-i', '--input')
-    parser.add_argument('-d', '--data')
-    parser.add_argument('-t', '--threshold', type=float)
+    parser.add_argument('-i', '--input', help='Name of classifer to load e.g. myclassifier')
+    parser.add_argument('-d', '--data', help='Location of data to screen')
+    parser.add_argument('-t', '--threshold', type=float, help='Pulse volume threshold ratio e.g. 0.7')
     args = parser.parse_args()
 
     sweeps = glob.glob(os.path.join(args.data, "*.Z")) + glob.glob(os.path.join(args.data, "*.gz"))
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     processor = preprocessor.Preprocessor.load(args.input + ".proc")
 
     for sweep in sweeps:
-        data = processor.normalize(processor.processData(resample_sweep_polar(level2.Sweep(sweep))))
+        data = processor.normalizeAdditionalData(processor.processData(resample_sweep_polar(level2.Sweep(sweep))))
         hits = 0
         for datum in data:
             output = net.activate(datum)
@@ -31,8 +31,8 @@ if __name__ == "__main__":
                 hits += 1
         ratio = hits / len(data);
         if (ratio > args.threshold):
-            print "%s matches screen criteria (ratio = %f, threshold = %f)" % (sweep, ratio, args.threshold)
+            print "%s MATCHES screen criteria (ratio = %f, threshold = %f)" % (sweep, ratio, args.threshold)
         else:
-            LOG("%s - NOT A MATCH (ratio = %f, threshold = %f)" % (sweep, ratio, args.threshold))
+            print "%s - not a match (ratio = %f, threshold = %f)" % (sweep, ratio, args.threshold)
 
 

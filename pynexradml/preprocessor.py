@@ -2,6 +2,7 @@ import re
 import numpy as np
 import numpy.linalg as la
 import features, filters, normalizers
+import json
 
 class Preprocessor(object):
     def __init__(self, pca = False):
@@ -85,6 +86,12 @@ class Preprocessor(object):
         else:
             return result
 
+    def normalizeAdditionalData(self, data):
+        for key in self.normalizerKeys:
+            if key in self.normalizers:
+                self.normalizers[key].applyAgain(data)
+        return data
+
     def normalizeData(self, data):
         for key in self.normalizerKeys:
             if key in self.normalizers:
@@ -103,17 +110,26 @@ class Preprocessor(object):
         properties = {
             'features' : self.featureKeys,
             'filters' : self.filterKeys,
-            'normalizers' : self.normalizerKeys
+            'normalizers' : ["%s;%s" % (x, json.dumps(self.normalizers[x].serialize())) for x in self.normalizerKeys]
             }
         return properties
 
     def deserialize(self, properties):
         for f in properties['features']:
+            print "Adding Feature %s to Preprocessor" % f
             self.createAndAddFeature(f)
         for f in properties['filters']:
+            print "Adding Filter %s to Preprocessor" % f
             self.createAndAddFilter(f)
         for n in properties['normalizers']:
-            self.createAndAddNormalizer(n)
+            print "Adding Normalizer %s to Preprocessor" % n
+            if ';' in n:
+                key, properties = n.split(';')
+                normalizer = self.createNormalizer(key)
+                normalizer.deserialize(json.loads(properties))
+                self.addNormalizer(normalizer, key)
+            else:
+                self.createAndAddNormalizer(n)
 
     def save(self, filename):
         data_str = json.dumps(self.serialize())

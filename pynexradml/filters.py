@@ -20,6 +20,24 @@ class RangeConstraints(Filter):
             if (data[i] < self.minRange) or (data[i] > self.maxRange):
                 fmap['_filter_'][i] = 1
 
+class SmootheBadValues(Filter):
+    def __init__(self, baseFeature, badValue=True, rangeFolded=True):
+        super(SmootheBadValues, self).__init__()
+        baseFeature += '()'
+        self.bad = (badValue and (badValue != "False"))
+        self.rf = (rangeFolded and (rangeFolded != "False"))
+        self.baseFeature = baseFeature
+        self.requiredFeatures.append(baseFeature)
+
+    def apply(self, fmap):
+        data = fmap[self.baseFeature]
+        avg = np.mean(data)
+        for i in xrange(len(data)):
+            if self.bad and data[i] == BADVAL:
+                data[i] = avg
+            elif self.rf and data[i] == RFVAL:
+                data[i] = avg
+
 class RemoveBadValues(Filter):
     def __init__(self, baseFeature, badValue=True, rangeFolded=True):
         super(RemoveBadValues, self).__init__()

@@ -1,3 +1,4 @@
+from __future__ import division
 import random
 import numpy as np
 import ffnn
@@ -40,6 +41,7 @@ if __name__ == "__main__":
     parser.add_argument('--norm', nargs='*', help='Normalizers to use (e.g. SymmetricNormalizer(0,1,2))')
     parser.add_argument('-t', '--training_data', nargs='*', help='Datasets to use for training data (e.g. rd1 rd2)')
     parser.add_argument('-o', '--output', help='Save classifier to an output file (e.g. nn.ml)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Show verbose output')
 
     args = parser.parse_args()
 
@@ -52,18 +54,24 @@ if __name__ == "__main__":
 
     processor = preprocessor.Preprocessor()
     for f in args.features:
+        print "Adding Feature %s to Preprocessor" % f
         processor.createAndAddFeature(f)
     for f in args.filters:
+        print "Adding Filter %s to Preprocessor" % f
         processor.createAndAddFilter(f)
     for n in args.norm:
+        print "Adding Normalizer %s to Preprocessor" % n
         processor.createAndAddNormalizer(n)
 
     instances = []
+    print "Loading Data..."
     for sweep in sweeps:
+        print "Constructing Data for %s, Class = %s" % (sweep[1], sweep[2])
         instance = processor.processData(ds.getData(sweep[0], sweep[1])) 
         instances.append(np.hstack([instance, np.ones((instance.shape[0], 1)) * float(sweep[2])]))
 
     composite = np.vstack(instances)
+    print "Normalizing Data..."
     data = processor.normalizeData(composite)
 
     np.random.shuffle(data)
@@ -76,14 +84,24 @@ if __name__ == "__main__":
     network.validation_data = data[validationIndex:,:]
     network.shuffle = True
     network.momentum = 0.1
+    network.verbose = args.verbose
+    print "Learning Network..."
     network.learn(0.03, args.epochs)
 
     tp, tn, fp, fn, count = (0, 0, 0, 0, 0)
     def callback(inputs, target, output):
+        global tp
+        global tn
+        global fp
+        global fn
+        global count
+
         if output > 0:
             output = 1
         elif output <= 0:
             output = -1
+
+        target = int(target)
 
         if target == 1 and output == 1:
             tp += 1
@@ -99,5 +117,7 @@ if __name__ == "__main__":
     printStats(tp, tn, fp, fn, mse)
 
     if args.output != None:
+        print "Saving Network to %s" % (args.output + ".net")
         network.save(args.output + ".net")
+        print "Saving Preprocessor to %s" % (args.output + ".proc")
         processor.save(args.output + ".proc")
