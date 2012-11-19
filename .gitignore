@@ -1,4 +1,6 @@
 *.py[cod]
+*.net
+*.proc
 
 # Packages
 *.egg
