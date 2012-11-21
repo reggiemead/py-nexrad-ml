@@ -74,14 +74,35 @@ if __name__ == "__main__":
     print "Normalizing Data..."
     data = processor.normalizeData(composite)
 
-    np.random.shuffle(data)
+    def shuffle(index):
+        global data
+        for x in xrange(0, index):
+            i = (index - 1 - x)
+            j = random.randint(0, i)
+            tmp = np.array(data[i, :])
+            data[i, :] = data[j, :]
+            data[j, :] = tmp
+
+    #np.random.shuffle(data)
+    shuffle(len(data))
 
     validationIndex = int(len(data) * 0.9)
 
     nodes = len(data[0]) - 1
     network = ffnn.FeedForwardNeuralNet(layers=[nodes, nodes // 2, 1])
-    network.learning_data = data[:validationIndex,:]
-    network.validation_data = data[validationIndex:,:]
+
+    def customLearningGen():
+        if network.shuffle:
+            shuffle(validationIndex)
+        for i in xrange(0,validationIndex):
+            yield(data[i, :-1], data[i, -1])
+
+    def customValidationGen():
+        for i in xrange(validationIndex, len(data)):
+            yield(data[i, :-1], data[i, -1])
+
+    network.learningGen = customLearningGen
+    network.validationGen = customValidationGen
     network.shuffle = True
     network.momentum = 0.1
     network.verbose = args.verbose

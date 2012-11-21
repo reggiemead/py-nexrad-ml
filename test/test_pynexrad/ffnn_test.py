@@ -61,7 +61,7 @@ class TestFFNN(unittest.TestCase):
         self.assertAlmostEqual(output[0,2], .1875, places=4)
 
     def testActivation(self):
-        net = FeedForwardNeuralNet([3, 2, 1])
+        net = FeedForwardNeuralNet([3, 2, 1], sigmoids=[LogisticActivationFunction(), LogisticActivationFunction()])
         net.weights[0] = np.matrix([[1 , 2], [1, 2], [-1, -2], [-1, -2]])
         net.weights[1] = np.matrix([[-1],[-1],[1]])
         output = net.activate([1, 1, 1])[0,0]
