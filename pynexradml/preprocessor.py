@@ -96,6 +96,7 @@ class Preprocessor(object):
         for key in self.normalizerKeys:
             if key in self.normalizers:
                 self.normalizers[key].apply(data)
+        return data
 
     def calcPCA(self, data):
         data -= np.mean(data, axis=0)

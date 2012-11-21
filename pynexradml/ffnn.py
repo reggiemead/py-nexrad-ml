@@ -160,7 +160,6 @@ class FeedForwardNeuralNet(object):
         return self.mse
 
     def getLearningData(self):
-        print "%d learning instances" % (len(self.learningData))
         if self.shuffle:
             np.random.shuffle(self.learningData)
         for i in xrange(len(self.learningData)):

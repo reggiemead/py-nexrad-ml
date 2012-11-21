@@ -6,6 +6,8 @@ import preprocessor
 import datastore
 import cache
 
+from config import NexradConfig
+
 def printStats(tp, tn, fp, fn, mse):
     accuracy = (tp + tn) / (tp + tn + fp + fn)
     precision = 0.0 if (tp + fp) == 0 else tp / (tp + fp)
@@ -34,8 +36,9 @@ if __name__ == "__main__":
     import argparse, os
 
     parser = argparse.ArgumentParser(description='Build and validate classifiers')
+    parser.add_argument('-a', '--arch', help="Network Architecture e.g. 3,2,1 for 3 inputs, 2 hidden nodes and 1 output")
     parser.add_argument('-d', '--data_dir', help='Directory containing datastore')
-
+    parser.add_argument('-f', '--config_file', default='pynexrad.cfg', help='override default pynexrad.cfg config file')
     parser.add_argument('--cache', action='store_true', help='Cache data to disk to allow for more data than can fit in memory.')
     parser.add_argument('--epochs', type=int, help='Number of epochs for training a neural network')
     parser.add_argument('--features', nargs='*', help='Features to include (e.g. ref, vel, sw)')
@@ -47,26 +50,31 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ds = datastore.Datastore(args.data_dir)
+    config = NexradConfig(args.config_file, "trainer")
+
+    dataDir = config.getOverrideOrConfig(args, 'data_dir')
+    ds = datastore.Datastore(dataDir)
 
     #Get Data
     sweeps = []
-    for dataset in args.training_data:
+    for dataset in config.getOverrideOrConfigAsList(args, 'training_data'):
         sweeps += [(dataset, x[0], x[1]) for x in ds.getManifest(dataset)]
 
     processor = preprocessor.Preprocessor()
-    for f in args.features:
+    for f in config.getOverrideOrConfigAsList(args, 'features'):
         print "Adding Feature %s to Preprocessor" % f
         processor.createAndAddFeature(f)
-    for f in args.filters:
+    for f in config.getOverrideOrConfigAsList(args, 'filters'):
         print "Adding Filter %s to Preprocessor" % f
         processor.createAndAddFilter(f)
-    for n in args.norm:
+    for n in config.getOverrideOrConfigAsList(args, 'norm'):
         print "Adding Normalizer %s to Preprocessor" % n
         processor.createAndAddNormalizer(n)
 
-    if args.cache:
-        cache = cache.Cache(args.data_dir)
+    useCache = config.getOverrideOrConfigAsBool(args, 'cache')
+
+    if useCache:
+        cache = cache.Cache(dataDir)
         instances = cache.createDiskArray("temp_data", len(processor.featureKeys) + 1)
     else:
         instances = []
@@ -76,7 +84,7 @@ if __name__ == "__main__":
         instance = processor.processData(ds.getData(sweep[0], sweep[1])) 
         instances.append(np.hstack([instance, np.ones((instance.shape[0], 1)) * float(sweep[2])]))
 
-    if args.cache:
+    if useCache:
         composite = instances
     else:
         composite = np.vstack(instances)
@@ -97,8 +105,13 @@ if __name__ == "__main__":
 
     validationIndex = int(len(data) * 0.9)
 
-    nodes = len(data[0]) - 1
-    network = ffnn.FeedForwardNeuralNet(layers=[nodes, nodes // 2, 1])
+    archConfig = config.getOverrideOrConfig(args, 'arch')
+    if archConfig != None:
+        arch = [int(x) for x in archConfig.split(',')]
+    else:
+        nodes = len(data[0]) - 1
+        arch = [nodes, nodes // 2, 1]
+    network = ffnn.FeedForwardNeuralNet(layers=arch)
 
     def customLearningGen():
         if network.shuffle:
@@ -114,9 +127,9 @@ if __name__ == "__main__":
     network.validationGen = customValidationGen
     network.shuffle = True
     network.momentum = 0.1
-    network.verbose = args.verbose
-    print "Learning Network..."
-    network.learn(0.03, args.epochs)
+    network.verbose = config.getOverrideOrConfigAsBool(args, 'verbose')
+    print "Learning Network, Architecture = %s..." % arch
+    network.learn(0.03, config.getOverrideOrConfigAsInt(args, 'epochs'))
 
     tp, tn, fp, fn, count = (0, 0, 0, 0, 0)
     def callback(inputs, target, output):
@@ -146,8 +159,12 @@ if __name__ == "__main__":
     mse = network.validate(callback)
     printStats(tp, tn, fp, fn, mse)
 
-    if args.output != None:
-        print "Saving Network to %s" % (args.output + ".net")
-        network.save(args.output + ".net")
-        print "Saving Preprocessor to %s" % (args.output + ".proc")
-        processor.save(args.output + ".proc")
+    output = config.getOverrideOrConfig(args, 'output')
+    if output != None:
+        print "Saving Network to %s" % (output + ".net")
+        network.save(output + ".net")
+        print "Saving Preprocessor to %s" % (output + ".proc")
+        processor.save(output + ".proc")
+
+    if useCache:
+        cache.close()
