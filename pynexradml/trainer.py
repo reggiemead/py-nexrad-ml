@@ -4,6 +4,7 @@ import numpy as np
 import ffnn
 import preprocessor
 import datastore
+import cache
 
 def printStats(tp, tn, fp, fn, mse):
     accuracy = (tp + tn) / (tp + tn + fp + fn)
@@ -35,6 +36,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Build and validate classifiers')
     parser.add_argument('-d', '--data_dir', help='Directory containing datastore')
 
+    parser.add_argument('--cache', action='store_true', help='Cache data to disk to allow for more data than can fit in memory.')
     parser.add_argument('--epochs', type=int, help='Number of epochs for training a neural network')
     parser.add_argument('--features', nargs='*', help='Features to include (e.g. ref, vel, sw)')
     parser.add_argument('--filters', nargs='*', help='Filters to include (e.g. min_range_20km, no_bad_ref, su)')
@@ -63,14 +65,21 @@ if __name__ == "__main__":
         print "Adding Normalizer %s to Preprocessor" % n
         processor.createAndAddNormalizer(n)
 
-    instances = []
+    if args.cache:
+        cache = cache.Cache(args.data_dir)
+        instances = cache.createDiskArray("temp_data", len(processor.featureKeys) + 1)
+    else:
+        instances = []
     print "Loading Data..."
     for sweep in sweeps:
         print "Constructing Data for %s, Class = %s" % (sweep[1], sweep[2])
         instance = processor.processData(ds.getData(sweep[0], sweep[1])) 
         instances.append(np.hstack([instance, np.ones((instance.shape[0], 1)) * float(sweep[2])]))
 
-    composite = np.vstack(instances)
+    if args.cache:
+        composite = instances
+    else:
+        composite = np.vstack(instances)
     print "Normalizing Data..."
     data = processor.normalizeData(composite)
 
