@@ -36,17 +36,22 @@ class FeedForwardNeuralNet(object):
                 self.weights.append(np.matrix(np.random.rand(layers[i - 1] + 1, layers[i])) - 0.5)
                 self.prevDeltaW.append(np.matrix(np.zeros((layers[i - 1] + 1, layers[i]))))
 
-        """
-        Only used for basic examples. It is assumed that practicle applications will
-        override get_learning_instance and get_validation_instance
-        """
-        self.learning_data = []
-        self.validation_data = []
+        self.learningData = []
+        self.validationData = []
         self.activations = []
-        self.accum_mse = []
+        self.accumMse = []
         self.shuffle = False
         self.momentum = 0
         self.verbose = False
+
+        def defaultLearningGen():
+            return self.getLearningData()
+
+        def defaultValidationGen():
+            return self.getValidationData()
+
+        self.learningGen = defaultLearningGen
+        self.validationGen = defaultValidationGen
 
     def activate(self, inputs):
         self.activations = [np.matrix(inputs)]
@@ -74,10 +79,10 @@ class FeedForwardNeuralNet(object):
                 self.weights[i] = (self.weights[i] + deltaW)
 
     def learn(self, learning=.03, epochs=100):
-        self.accum_mse = []
+        self.accumMse = []
         for i in xrange(epochs):
             (mse, count) = 0, 0
-            for (inputs, target) in self.getLearningData():
+            for (inputs, target) in self.learningGen():
                 output = self.activate(inputs)
                 mse += ((target - output)**2)
                 count += 1
@@ -85,13 +90,13 @@ class FeedForwardNeuralNet(object):
                 if self.verbose and count % 10000 == 0:
                     print "%d instances processed for epoch %d" % (count, i)
             mse = mse / count
-            self.accum_mse.append(mse)
+            self.accumMse.append(mse)
             print "MSE for epoch %d : %f" % (i, mse)
         print "Final Training SSE = %f" % (self._computeSSE())
 
     def _computeSSE(self):
         sse = 0.0
-        for (inputs, target) in self.getLearningData():
+        for (inputs, target) in self.learningGen():
             output = self.activate(inputs)
             sse += ((target - output)**2)
         return sse
@@ -128,15 +133,15 @@ class FeedForwardNeuralNet(object):
         self.weights = [np.matrix(x) for x in properties['weights']]
 
     def save(self, filename):
-        data_str = json.dumps(self.serialize())
+        dataStr = json.dumps(self.serialize())
         with open(filename, 'w') as f:
-            f.write(data_str)
+            f.write(dataStr)
 
     @staticmethod
     def load(filename):
         with open(filename, 'r') as f:
-            data_str = f.read()
-        properties = json.loads(data_str)
+            dataStr = f.read()
+        properties = json.loads(dataStr)
         result = FeedForwardNeuralNet()
         result.deserialize(properties)
         result.sigmoids = [HyperbolicTangentActivationFunction() for i in range(len(result.weights))]
@@ -144,7 +149,7 @@ class FeedForwardNeuralNet(object):
 
     def validate(self, callback=None):
         (mse, count) = 0, 0
-        for (inputs, target) in self.getValidationData():
+        for (inputs, target) in self.validationGen():
             output = self.activate(inputs)
             mse += ((target - output)**2)
             count += 1
@@ -155,12 +160,13 @@ class FeedForwardNeuralNet(object):
         return self.mse
 
     def getLearningData(self):
+        print "%d learning instances" % (len(self.learningData))
         if self.shuffle:
-            np.random.shuffle(self.learning_data)
-        for i in xrange(len(self.learning_data)):
-            yield (self.learning_data[i, :-1], self.learning_data[i, -1])
+            np.random.shuffle(self.learningData)
+        for i in xrange(len(self.learningData)):
+            yield (self.learningData[i, :-1], self.learningData[i, -1])
 
     def getValidationData(self):
-        for i in xrange(len(self.validation_data)):
-            yield (self.validation_data[i, :-1], self.validation_data[i, -1])
+        for i in xrange(len(self.validationData)):
+            yield (self.validationData[i, :-1], self.validationData[i, -1])
 
