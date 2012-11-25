@@ -37,10 +37,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Build and validate classifiers')
     parser.add_argument('-a', '--arch', help="Network Architecture e.g. 3,2,1 for 3 inputs, 2 hidden nodes and 1 output")
-    parser.add_argument('-d', '--data_dir', help='Directory containing datastore')
-    parser.add_argument('-f', '--config_file', default='pynexrad.cfg', help='override default pynexrad.cfg config file')
     parser.add_argument('--cache', action='store_true', help='Cache data to disk to allow for more data than can fit in memory.')
+    parser.add_argument('-d', '--data_dir', help='Directory containing datastore')
     parser.add_argument('--epochs', type=int, help='Number of epochs for training a neural network')
+    parser.add_argument('-f', '--config_file', default='pynexrad.cfg', help='override default pynexrad.cfg config file')
     parser.add_argument('--features', nargs='*', help='Features to include (e.g. ref, vel, sw)')
     parser.add_argument('--filters', nargs='*', help='Filters to include (e.g. min_range_20km, no_bad_ref, su)')
     parser.add_argument('--norm', nargs='*', help='Normalizers to use (e.g. SymmetricNormalizer(0,1,2))')
